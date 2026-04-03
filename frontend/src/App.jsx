@@ -1700,8 +1700,8 @@ function App() {
   }, [isDark]);
 
   if (!user) {
-    if (authPage === "login") return <ToastProvider><LoginPage onLogin={handleLogin} switchToSignup={() => setAuthPage("signup")} t={t} /></ToastProvider>;
-    return <ToastProvider><SignupPage onLogin={handleLogin} switchToLogin={() => setAuthPage("login")} t={t} /></ToastProvider>;
+    if (authPage === "login") return <LoginPage onLogin={handleLogin} switchToSignup={() => setAuthPage("signup")} t={t} />;
+    return <SignupPage onLogin={handleLogin} switchToLogin={() => setAuthPage("login")} t={t} />;
   }
 
   const PAGE_TITLES = { dashboard: "Dashboard", products: "Products", sales: "Sales", analytics: "Analytics", alerts: "Alerts", export: "Export", settings: "Settings" };
@@ -1764,84 +1764,86 @@ function App() {
   };
 
   return (
-    <ToastProvider>
-      <div className="app-layout">
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} page={page} setPage={setPage} t={t} />
-        <div className="main-content">
-          <header className="topbar">
-            <span className="topbar-title">{PAGE_TITLES[page]}</span>
+    <div className="app-layout">
+      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} page={page} setPage={setPage} t={t} />
+      <div className="main-content">
+        <header className="topbar">
+          <span className="topbar-title">{PAGE_TITLES[page]}</span>
 
-            {/* GLOBAL SEARCH */}
-            <div ref={searchRef} style={{ position: "relative", flex: 1, maxWidth: 320 }}>
-              <div className="topbar-search">
-                <span style={{ color: t.muted }}>🔍</span>
-                <input
-                  placeholder="Search products, pages..."
-                  value={topSearch}
-                  onChange={e => handleGlobalSearch(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowSearchDrop(true)}
-                />
-                {topSearch && (
-                  <span style={{ cursor: "pointer", color: t.muted, fontSize: 12 }}
-                    onClick={() => { setTopSearch(""); setSearchResults([]); setShowSearchDrop(false); }}>✕</span>
-                )}
-              </div>
-              {showSearchDrop && (
-                <div style={{
-                  position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
-                  background: t.card, border: `1px solid ${t.border}`, borderRadius: 10,
-                  zIndex: 500, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-                }}>
-                  {searchResults.map((r, i) => (
-                    <div key={i}
-                      onClick={() => {
-                        if (r.type === "page") setPage(r.id);
-                        else setPage("products");
-                        setTopSearch(""); setSearchResults([]); setShowSearchDrop(false);
-                      }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-                        cursor: "pointer", borderBottom: i < searchResults.length - 1 ? `1px solid ${t.border}` : "none",
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = t.primaryDim}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      <span style={{ fontSize: 16, width: 22, textAlign: "center" }}>{r.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</div>
-                        {r.sub && <div style={{ fontSize: 11, color: t.muted, marginTop: 1 }}>{r.sub}</div>}
-                      </div>
-                      {r.type === "page" && <span style={{ fontSize: 11, color: t.primary, background: t.primaryDim, padding: "2px 6px", borderRadius: 4 }}>Page</span>}
-                      {r.type === "product" && r.status && <StatusBadge status={r.status} />}
-                    </div>
-                  ))}
-                </div>
+          {/* GLOBAL SEARCH */}
+          <div ref={searchRef} style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+            <div className="topbar-search">
+              <span style={{ color: t.muted }}>🔍</span>
+              <input
+                placeholder="Search products, pages..."
+                value={topSearch}
+                onChange={e => handleGlobalSearch(e.target.value)}
+                onFocus={() => searchResults.length > 0 && setShowSearchDrop(true)}
+              />
+              {topSearch && (
+                <span style={{ cursor: "pointer", color: t.muted, fontSize: 12 }}
+                  onClick={() => { setTopSearch(""); setSearchResults([]); setShowSearchDrop(false); }}>✕</span>
               )}
             </div>
-            <div className="topbar-actions">
-              <div className="icon-btn" onClick={() => setIsDark(d => !d)} title="Toggle theme">
-                {isDark ? "☀️" : "🌙"}
+            {showSearchDrop && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+                background: t.card, border: `1px solid ${t.border}`, borderRadius: 10,
+                zIndex: 500, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+              }}>
+                {searchResults.map((r, i) => (
+                  <div key={i}
+                    onClick={() => {
+                      if (r.type === "page") setPage(r.id);
+                      else setPage("products");
+                      setTopSearch(""); setSearchResults([]); setShowSearchDrop(false);
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                      cursor: "pointer", borderBottom: i < searchResults.length - 1 ? `1px solid ${t.border}` : "none",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = t.primaryDim}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <span style={{ fontSize: 16, width: 22, textAlign: "center" }}>{r.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</div>
+                      {r.sub && <div style={{ fontSize: 11, color: t.muted, marginTop: 1 }}>{r.sub}</div>}
+                    </div>
+                    {r.type === "page" && <span style={{ fontSize: 11, color: t.primary, background: t.primaryDim, padding: "2px 6px", borderRadius: 4 }}>Page</span>}
+                    {r.type === "product" && r.status && <StatusBadge status={r.status} />}
+                  </div>
+                ))}
               </div>
-              <div className="icon-btn" onClick={() => setPage("alerts")} title="Alerts">
-                🔔
-                <span className="notif-dot" />
-              </div>
-              <div className="avatar" title={user.name} onClick={() => setPage("settings")}>
-                {initials(user.name)}
-              </div>
+            )}
+          </div>
+          <div className="topbar-actions">
+            <div className="icon-btn" onClick={() => setIsDark(d => !d)} title="Toggle theme">
+              {isDark ? "☀️" : "🌙"}
             </div>
-          </header>
-          <main className="page-content">
-            {renderPage()}
-          </main>
-        </div>
+            <div className="icon-btn" onClick={() => setPage("alerts")} title="Alerts">
+              🔔
+              <span className="notif-dot" />
+            </div>
+            <div className="avatar" title={user.name} onClick={() => setPage("settings")}>
+              {initials(user.name)}
+            </div>
+          </div>
+        </header>
+        <main className="page-content">
+          {renderPage()}
+        </main>
       </div>
       <Chatbot t={t} />
-    </ToastProvider>
+    </div>
   );
 }
 
 // ─── ENTRY POINT ──────────────────────────────────────────────────────────────
 const root = createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(
+  <ToastProvider>
+    <App />
+  </ToastProvider>
+);
