@@ -283,20 +283,23 @@ const api = async (path, options = {}) => {
   const token = localStorage.getItem("ss_token");
   const isFormData = options.body instanceof URLSearchParams;
 
-  const isDemoToken = !token || token === "demo-token" || token === "demo-token-offline";
   const headers = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
-    ...(!isDemoToken ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    localStorage.removeItem("ss_token");
-    localStorage.removeItem("ss_user");
-    window.location.reload();
-    return;
+    // Only force logout if this is NOT the login request itself
+    // (login returns 401 for bad credentials — that's handled by the caller)
+    if (!path.includes("/auth/login") && !path.includes("/auth/signup")) {
+      localStorage.removeItem("ss_token");
+      localStorage.removeItem("ss_user");
+      window.location.reload();
+      return;
+    }
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Unknown error" }));
@@ -308,7 +311,7 @@ const api = async (path, options = {}) => {
 const apiDownload = async (path, filename) => {
   const token = localStorage.getItem("ss_token");
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: token && token !== "demo-token" ? { Authorization: `Bearer ${token}` } : {},
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error("Download failed");
   const blob = await res.blob();
@@ -931,10 +934,9 @@ function SalesPage({ t }) {
 
 // ─── LOGIN PAGE ────────────────────────────────────────────────────────────────
 function LoginPage({ onLogin, switchToSignup, t }) {
-  const [email, setEmail] = useState("demo@smartstock.pro");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState("admin");
   const toast = useToast();
 
   const handleSubmit = async (e) => {
@@ -944,24 +946,17 @@ function LoginPage({ onLogin, switchToSignup, t }) {
       const form = new URLSearchParams();
       form.append("username", email);
       form.append("password", password);
-      const data = await api("/auth/login", { method: "POST", body: form, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      const data = await api("/auth/login", {
+        method: "POST",
+        body: form,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
       localStorage.setItem("ss_token", data.access_token);
       localStorage.setItem("ss_user", JSON.stringify(data.user));
       onLogin(data.user);
       toast("Welcome back, " + data.user.name + "!", "success");
     } catch (err) {
-      // Demo mode — works offline without backend
-      // Uses a clearly fake token that won't trigger Chrome's password breach warning
-      // because it never gets submitted to any real auth endpoint
-      if (email === "demo@smartstock.pro" && password === "demo1234") {
-        const demoUser = { id: 0, name: "Demo Admin", email, role, company: "Demo Corp" };
-        localStorage.setItem("ss_token", "demo-token-offline");
-        localStorage.setItem("ss_user", JSON.stringify(demoUser));
-        onLogin(demoUser);
-        toast("Welcome to SmartStock Pro (Demo Mode)", "success");
-      } else {
-        toast(err.message || "Login failed — check credentials or use demo account", "error");
-      }
+      toast(err.message || "Incorrect email or password", "error");
     }
     setLoading(false);
   };
@@ -975,30 +970,43 @@ function LoginPage({ onLogin, switchToSignup, t }) {
         </div>
         <h1 className="auth-title">Welcome back</h1>
         <p className="auth-sub">Sign in to manage your inventory</p>
-
-        <div style={{ display: "flex", gap: 4, background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: 4, marginBottom: 20 }}>
-          {["admin", "staff"].map(r => (
-            <button key={r} className={`filter-tab ${role === r ? "active" : ""}`} style={{ flex: 1 }} onClick={() => setRole(r)}>
-              {r === "admin" ? "👑 Admin" : "👤 Staff"}
-            </button>
-          ))}
-        </div>
-
         <form onSubmit={handleSubmit}>
           <div className="input-group">
             <label className="input-label">Email</label>
-            <input className="input" type="email" placeholder="you@company.com" value={email} onChange={e => setEmail(e.target.value)} required />
+            <input
+              className="input"
+              type="email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
           </div>
           <div className="input-group">
             <label className="input-label">Password</label>
-            <input className="input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+            <input
+              className="input"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
           </div>
-          <button className="btn btn-primary w-full" type="submit" disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 15, marginTop: 8 }}>
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={loading}
+            style={{ width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 15, marginTop: 8 }}
+          >
             {loading ? <><span className="spinner spinner-sm" /> Signing in...</> : "Sign In →"}
           </button>
         </form>
-        <p className="auth-divider">Don't have an account? <span className="auth-link" onClick={switchToSignup}>Create one</span></p>
-        <p style={{ fontSize: 12, textAlign: "center", color: t.muted, marginTop: 8 }}>Demo: demo@smartstock.pro / demo1234</p>
+        <p className="auth-divider">
+          Don't have an account? <span className="auth-link" onClick={switchToSignup}>Create one</span>
+        </p>
       </div>
     </div>
   );
@@ -1650,9 +1658,14 @@ function App() {
   const [user, setUser] = useState(() => {
     try {
       const u = JSON.parse(localStorage.getItem("ss_user"));
-      const t = localStorage.getItem("ss_token");
-      // Only restore session if both user and token exist
-      return (u && t) ? u : null;
+      const tok = localStorage.getItem("ss_token");
+      // Only restore session if we have a real JWT (starts with "ey")
+      // Discard any old demo tokens that would cause immediate 401s
+      if (u && tok && tok.startsWith("ey")) return u;
+      // Clean up any stale demo session
+      localStorage.removeItem("ss_token");
+      localStorage.removeItem("ss_user");
+      return null;
     } catch { return null; }
   });
   const [page, setPage] = useState("dashboard");
