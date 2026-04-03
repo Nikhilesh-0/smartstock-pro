@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     GMAIL_USER: Optional[str] = None
     GMAIL_APP_PASSWORD: Optional[str] = None
+    # Who receives alert emails. If not set, alerts go back to GMAIL_USER.
+    # Set this to a manager/team inbox if you want alerts sent elsewhere.
+    ALERT_EMAIL: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     APP_NAME: str = "SmartStock Pro"
     DEBUG: bool = False
