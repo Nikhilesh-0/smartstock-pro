@@ -1699,26 +1699,14 @@ function App() {
     document.body.style.color = t.text;
   }, [isDark]);
 
-  if (!user) {
-    if (authPage === "login") return <LoginPage onLogin={handleLogin} switchToSignup={() => setAuthPage("signup")} t={t} />;
-    return <SignupPage onLogin={handleLogin} switchToLogin={() => setAuthPage("login")} t={t} />;
-  }
-
-  const PAGE_TITLES = { dashboard: "Dashboard", products: "Products", sales: "Sales", analytics: "Analytics", alerts: "Alerts", export: "Export", settings: "Settings" };
-
-  // Global search — searches products by name/SKU and nav items
+  // Global search — must be declared before any early return (Rules of Hooks)
   const handleGlobalSearch = useCallback(async (query) => {
     setTopSearch(query);
     if (!query.trim()) { setSearchResults([]); setShowSearchDrop(false); return; }
-
     const q = query.toLowerCase();
-
-    // Nav matches
     const navMatches = NAV_ITEMS
       .filter(n => n.label.toLowerCase().includes(q))
       .map(n => ({ type: "page", icon: n.icon, label: n.label, id: n.id }));
-
-    // Product matches — try API first, fall back to mock
     let productMatches = [];
     try {
       const products = await api(`/inventory/products?search=${encodeURIComponent(query)}`);
@@ -1737,17 +1725,26 @@ function App() {
           status: p.status, id: p.id,
         }));
     }
-
     const results = [...navMatches, ...productMatches];
     setSearchResults(results);
     setShowSearchDrop(results.length > 0);
   }, []);
 
   useEffect(() => {
-    const handler = (e) => { if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchDrop(false); };
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchDrop(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // ── early return for unauthenticated state — ALL hooks are above this line ──
+  if (!user) {
+    if (authPage === "login") return <LoginPage onLogin={handleLogin} switchToSignup={() => setAuthPage("signup")} t={t} />;
+    return <SignupPage onLogin={handleLogin} switchToLogin={() => setAuthPage("login")} t={t} />;
+  }
+
+  const PAGE_TITLES = { dashboard: "Dashboard", products: "Products", sales: "Sales", analytics: "Analytics", alerts: "Alerts", export: "Export", settings: "Settings" };
 
   const renderPage = () => {
     const props = { t };
