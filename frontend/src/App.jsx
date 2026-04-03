@@ -292,12 +292,12 @@ const api = async (path, options = {}) => {
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    // Only force logout if this is NOT the login request itself
-    // (login returns 401 for bad credentials — that's handled by the caller)
     if (!path.includes("/auth/login") && !path.includes("/auth/signup")) {
       localStorage.removeItem("ss_token");
       localStorage.removeItem("ss_user");
-      window.location.reload();
+      // Dispatch custom event so App component can update React state
+      // instead of doing a hard reload which causes the blank screen
+      window.dispatchEvent(new Event("ss-unauthorized"));
       return;
     }
   }
@@ -1678,6 +1678,15 @@ function App() {
 
   const t = isDark ? DARK_THEME : LIGHT_THEME;
 
+  // Listen for 401s fired from the api() helper and handle them in React state
+  useEffect(() => {
+    const handle = () => { setUser(null); setAuthPage("login"); setPage("dashboard"); };
+    window.addEventListener("ss-unauthorized", handle);
+    return () => window.removeEventListener("ss-unauthorized", handle);
+  }, []);
+
+  const handleLogin = (u) => { setUser(u); setPage("dashboard"); setAuthPage("login"); };
+
   useEffect(() => {
     let el = document.getElementById("ss-styles");
     if (!el) { el = document.createElement("style"); el.id = "ss-styles"; document.head.appendChild(el); }
@@ -1691,8 +1700,8 @@ function App() {
   }, [isDark]);
 
   if (!user) {
-    if (authPage === "login") return <ToastProvider><LoginPage onLogin={setUser} switchToSignup={() => setAuthPage("signup")} t={t} /></ToastProvider>;
-    return <ToastProvider><SignupPage onLogin={setUser} switchToLogin={() => setAuthPage("login")} t={t} /></ToastProvider>;
+    if (authPage === "login") return <ToastProvider><LoginPage onLogin={handleLogin} switchToSignup={() => setAuthPage("signup")} t={t} /></ToastProvider>;
+    return <ToastProvider><SignupPage onLogin={handleLogin} switchToLogin={() => setAuthPage("login")} t={t} /></ToastProvider>;
   }
 
   const PAGE_TITLES = { dashboard: "Dashboard", products: "Products", sales: "Sales", analytics: "Analytics", alerts: "Alerts", export: "Export", settings: "Settings" };
@@ -1749,7 +1758,7 @@ function App() {
       case "analytics": return <AnalyticsPage {...props} />;
       case "alerts": return <AlertsPage {...props} />;
       case "export": return <ExportPage {...props} />;
-      case "settings": return <SettingsPage {...props} isDark={isDark} setIsDark={setIsDark} user={user} onLogout={() => { setUser(null); setAuthPage("login"); }} />;
+      case "settings": return <SettingsPage {...props} isDark={isDark} setIsDark={setIsDark} user={user} onLogout={() => { setUser(null); setAuthPage("login"); setPage("dashboard"); }} />;
       default: return <DashboardPage {...props} />;
     }
   };
