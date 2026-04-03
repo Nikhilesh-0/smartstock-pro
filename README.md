@@ -2,7 +2,7 @@
 
 A production-ready full-stack inventory management and optimization system with AI-powered insights.
 
-**Stack:** React + Vite (Vercel) · FastAPI + SQLAlchemy (Railway) · Supabase PostgreSQL · Groq AI · Gmail SMTP
+**Stack:** React + Vite (Vercel) · FastAPI + SQLAlchemy (Railway) · Supabase PostgreSQL · Groq AI · Resend Email
 
 ---
 
@@ -11,9 +11,10 @@ A production-ready full-stack inventory management and optimization system with 
 - 📦 **Inventory Management** — Full CRUD with EOQ auto-calculation, status tracking
 - 🧾 **Sales Tracking** — Record sales, process refunds, day-of-week and hourly trends
 - 📈 **Analytics** — Linear regression demand forecast, peak hours, interactive EOQ/ROP calculator
-- ⚠️ **Smart Alerts** — Auto-email via Gmail SMTP when stock goes critical
-- 🤖 **AI Chatbot** — Groq-powered inventory assistant (llama3-8b-8192)
+- ⚠️ **Smart Alerts** — Auto-email via Resend API when stock goes critical
+- 🤖 **AI Chatbot** — Groq-powered inventory assistant (llama-3.1-8b-instant)
 - ⬇️ **CSV Export** — One-click export of inventory and sales data
+- 🔍 **Global Search** — Topbar search finds products and pages instantly
 - 🎨 **Warm Dark Theme** — Premium amber/orange UI with light mode toggle
 
 ---
@@ -22,19 +23,22 @@ A production-ready full-stack inventory management and optimization system with 
 
 ```
 smartstock-pro/
-├── frontend/          # React + Vite SPA
+├── frontend/          # React + Vite SPA (deploy to Vercel)
 │   ├── src/App.jsx    # Entire frontend in one file
-│   ├── vercel.json    # Vercel SPA routing config
+│   ├── vercel.json    # SPA routing config
 │   └── package.json
-└── backend/           # FastAPI Python API
-    ├── main.py        # App entry, CORS, routes
-    ├── models.py      # SQLAlchemy ORM models
-    ├── config.py      # Pydantic settings
-    ├── database.py    # SQLAlchemy engine
-    ├── routes/        # auth, inventory, sales, alerts, forecast, export, chat
-    ├── Dockerfile     # Railway deployment
-    └── railway.toml   # Railway config
+├── backend/           # FastAPI Python API (deploy to Railway)
+│   ├── main.py        # App entry, CORS, routes
+│   ├── models.py      # SQLAlchemy ORM models
+│   ├── config.py      # Pydantic settings
+│   ├── database.py    # SQLAlchemy engine
+│   ├── routes/        # auth, inventory, sales, alerts, forecast, export, chat
+│   ├── Dockerfile     # Railway deployment
+│   └── railway.toml
+└── README.md          # ← you are here (safe to have at repo root)
 ```
+
+> **GitHub note:** Having `README.md` at the repo root alongside `frontend/` and `backend/` is completely safe. Railway only reads `backend/Dockerfile`. Vercel only reads `frontend/package.json`. Neither touches the README.
 
 ---
 
@@ -45,28 +49,26 @@ smartstock-pro/
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate       # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # Fill in your values
+cp .env.example .env            # fill in values
 uvicorn main:app --reload --port 8000
 ```
 
-API available at: `http://localhost:8000`
-Swagger docs at: `http://localhost:8000/docs`
+API: `http://localhost:8000` · Swagger docs: `http://localhost:8000/docs`
 
 ### Frontend
 
 ```bash
 cd frontend
 npm install
-# Create .env.local:
 echo "VITE_API_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 
-App available at: `http://localhost:5173`
+App: `http://localhost:5173`
 
-**Demo login:** `demo@smartstock.pro` / `demo1234` (works offline without backend)
+**Demo login (works offline):** `demo@smartstock.pro` / `demo1234`
 
 ---
 
@@ -74,73 +76,75 @@ App available at: `http://localhost:5173`
 
 ### 1. Supabase (Database)
 
-1. Go to [supabase.com](https://supabase.com) → New Project
-2. Settings → Database → **Connection string** → URI tab
-3. Copy the URI — it looks like: `postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres`
-4. Tables are created automatically on first backend startup (`Base.metadata.create_all`)
+1. Create project at [supabase.com](https://supabase.com)
+2. Settings → Database → Connection string → URI tab → copy
+3. Paste as `DATABASE_URL` in Railway env vars
+4. Tables are created automatically on first backend boot (`Base.metadata.create_all`)
 
 ### 2. Railway (Backend)
 
-1. Push `backend/` folder to a GitHub repository
-2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
-3. Select your backend repo
-4. Add all environment variables (Settings → Variables):
+1. Push this repo to GitHub (with `frontend/`, `backend/`, `README.md` at root)
+2. [railway.app](https://railway.app) → New Project → Deploy from GitHub → select repo
+3. Set **Root Directory** to `backend` in Railway settings
+4. Add environment variables (Settings → Variables):
 
 ```
-DATABASE_URL=postgresql://postgres:...@db....supabase.co:5432/postgres
-SECRET_KEY=your-very-long-random-secret-key-at-least-32-chars
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-GMAIL_USER=youremail@gmail.com
-GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-APP_NAME=SmartStock Pro
-DEBUG=False
+DATABASE_URL        = postgresql://postgres:...@db....supabase.co:5432/postgres
+SECRET_KEY          = (any random 32+ char string)
+ALGORITHM           = HS256
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+RESEND_API_KEY      = re_xxxxxxxxxxxxxxxxxxxx
+ALERT_EMAIL         = forai3101@gmail.com
+GROQ_API_KEY        = gsk_xxxxxxxxxxxx
+APP_NAME            = SmartStock Pro
+DEBUG               = False
 ```
 
-5. Railway auto-detects `Dockerfile` and deploys
-6. Copy the generated URL (e.g. `https://smartstock-backend-production.up.railway.app`)
-
-> **Note:** Railway uses the `$PORT` env var automatically — the `railway.toml` handles this.
+5. Railway auto-detects `Dockerfile`, builds and deploys
+6. Copy your Railway URL (e.g. `https://smartstock-pro-backend.up.railway.app`)
 
 ### 3. Vercel (Frontend)
 
-1. Push `frontend/` folder to a GitHub repository
-2. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
-3. Framework preset: **Vite**
-4. Root directory: `frontend` (if deploying from monorepo)
-5. Add environment variable:
+1. [vercel.com](https://vercel.com) → New Project → Import repo from GitHub
+2. Framework preset: **Vite**
+3. Root directory: `frontend`
+4. Add environment variable:
    ```
    VITE_API_URL = https://your-railway-url.up.railway.app
    ```
-6. Deploy → your app is live!
+5. Deploy
 
 ---
 
-## Gmail App Password Setup
+## Email Alerts — Resend Setup
 
-Gmail's App Password is required for SMTP email alerts:
+> **Why Resend and not Gmail SMTP?** Railway blocks all outbound SMTP ports (587, 465, 2525) on all plans. Raw SMTP cannot work from Railway. Resend uses an HTTPS API instead — it's unblocked and more reliable.
 
-1. Enable **2-Factor Authentication** on your Google account
-2. Go to [myaccount.google.com](https://myaccount.google.com) → Security → **App Passwords**
-3. Select app: **Mail**, device: **Other** → type "SmartStock Pro"
-4. Copy the generated 16-character password (format: `xxxx xxxx xxxx xxxx`)
-5. Set `GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx` in Railway (spaces are fine)
-6. Set `GMAIL_USER=your.gmail@gmail.com`
+### Steps
 
-> Alerts are sent to the same Gmail address. To send to a different address, modify `routes/alerts.py` → `msg["To"]` field.
+1. Sign up free at [resend.com](https://resend.com) — 3,000 emails/month free
+2. Go to **API Keys** → Create Key → copy it (starts with `re_`)
+3. Add to Railway: `RESEND_API_KEY = re_xxxxxxxxxxxxxxxxxxxx`
+4. Add to Railway: `ALERT_EMAIL = forai3101@gmail.com` (who receives alerts)
+5. Done — alerts will arrive from `onboarding@resend.dev` by default
+
+### Using your own domain as sender (optional)
+
+1. In Resend dashboard → **Domains** → Add domain → follow DNS instructions
+2. Once verified, set in Railway: `RESEND_FROM = alerts@yourdomain.com`
+
+### Who gets the alerts?
+
+The system is a self-notification setup: one Gmail account (`ALERT_EMAIL`) receives all stock alerts for the whole business. Alerts fire automatically when any product goes critical during a sale, and can also be triggered manually from the Alerts page. If you later want per-user alerts, you'd extend the `users` table with a `notify_email` field and loop through admin users.
 
 ---
 
-## Groq API Key
+## Groq API Key (AI Chatbot)
 
-1. Go to [console.groq.com](https://console.groq.com)
-2. API Keys → Create new key
-3. Copy and set as `GROQ_API_KEY` in Railway
-
-Model used: `llama-3.1-8b-instant` (fast, free tier available)
-
-> If `GROQ_API_KEY` is not set, the chatbot falls back to built-in keyword responses — no crash.
+1. Go to [console.groq.com](https://console.groq.com) → API Keys → Create
+2. Set `GROQ_API_KEY` in Railway
+3. Model: `llama-3.1-8b-instant` (fast, free tier available)
+4. If not set, the chatbot falls back to built-in keyword responses — no crash
 
 ---
 
@@ -148,15 +152,17 @@ Model used: `llama-3.1-8b-instant` (fast, free tier available)
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Supabase PostgreSQL connection string |
-| `SECRET_KEY` | ✅ | JWT signing secret (min 32 chars) |
-| `ALGORITHM` | ✅ | JWT algorithm (default: `HS256`) |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | ✅ | Token lifetime (default: `60`) |
-| `GMAIL_USER` | Optional | Gmail address for email alerts |
-| `GMAIL_APP_PASSWORD` | Optional | Gmail App Password (not your login password) |
-| `GROQ_API_KEY` | Optional | Groq API key for AI chatbot |
-| `APP_NAME` | Optional | Display name (default: `SmartStock Pro`) |
-| `DEBUG` | Optional | Debug mode (default: `False`) |
+| `DATABASE_URL` | ✅ | Supabase PostgreSQL URI |
+| `SECRET_KEY` | ✅ | JWT signing secret (32+ chars) |
+| `ALGORITHM` | ✅ | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | ✅ | `60` |
+| `RESEND_API_KEY` | ✅ for email | From resend.com |
+| `ALERT_EMAIL` | ✅ for email | Inbox that receives alerts |
+| `RESEND_FROM` | Optional | Custom sender address (requires verified domain) |
+| `GROQ_API_KEY` | Optional | AI chatbot |
+| `APP_NAME` | Optional | `SmartStock Pro` |
+| `DEBUG` | Optional | `False` |
+| `GMAIL_USER` | Legacy | Only used as `ALERT_EMAIL` fallback |
 
 ---
 
@@ -167,18 +173,18 @@ Model used: `llama-3.1-8b-instant` (fast, free tier available)
 | POST | `/auth/signup` | Create account, returns JWT |
 | POST | `/auth/login` | OAuth2 login, returns JWT |
 | GET | `/auth/me` | Current user info |
-| GET | `/inventory/products` | List products (filterable) |
+| GET | `/inventory/products` | List products (`?search=`, `?status=`, `?category=`) |
 | POST | `/inventory/products` | Add product (auto-calculates EOQ) |
 | PUT | `/inventory/products/{id}` | Update product |
 | DELETE | `/inventory/products/{id}` | Delete product |
 | GET | `/inventory/stats` | Dashboard KPIs |
-| POST | `/sales/record` | Record sale (deducts stock, triggers alerts) |
-| GET | `/sales/history` | Sales history |
+| POST | `/sales/record` | Record sale (deducts stock, auto-triggers alert) |
+| GET | `/sales/history` | Sales history (`?limit=`, `?product_id=`) |
 | POST | `/sales/refund/{sale_id}` | Process refund (restores stock) |
-| GET | `/sales/trends/day-of-week` | Sales by weekday |
-| GET | `/sales/trends/hourly` | Sales by hour |
+| GET | `/sales/trends/day-of-week` | Sales grouped by weekday |
+| GET | `/sales/trends/hourly` | Sales grouped by hour |
 | GET | `/alerts/` | Categorized stock alerts |
-| POST | `/alerts/send-email/{product_id}` | Send Gmail alert |
+| POST | `/alerts/send-email/{product_id}` | Send Resend alert email |
 | GET | `/analytics/forecast` | ML demand forecast (4 months) |
 | GET | `/analytics/peak-hours` | Peak sales hours |
 | POST | `/analytics/eoq-rop` | Calculate EOQ & ROP |
@@ -190,54 +196,44 @@ Model used: `llama-3.1-8b-instant` (fast, free tier available)
 
 ## Business Logic
 
-### Stock Status
 ```
-critical  = stock < reorder_level × 0.25
-low       = stock < reorder_level
-overstock = stock > optimal_stock × 1.2
-optimal   = everything else
-```
+Stock status:
+  critical  = stock < reorder_level × 0.25   → auto email + badge
+  low       = stock < reorder_level           → badge
+  overstock = stock > optimal_stock × 1.2    → badge
+  optimal   = everything else
 
-### EOQ Formula
-```
-EOQ = √(2 × D × S / H)
-D = annual demand, S = ordering cost, H = holding cost per unit per year
-```
+EOQ  = √(2 × D × S / H)
+       D = annual demand, S = ordering cost/order, H = holding cost/unit/year
 
-### ROP Formula
-```
-ROP = (lead_time_days × daily_sales_velocity) + safety_stock
+ROP  = (lead_time_days × daily_sales_velocity) + safety_stock
 ```
 
 ---
 
 ## Security Notes
 
-- CORS is set to `allow_origins=["*"]` for development. In production, change to your Vercel domain:
+- CORS is `allow_origins=["*"]` for development. In production, tighten to:
   ```python
   allow_origins=["https://your-app.vercel.app"]
   ```
-- Never commit `.env` files — use Railway/Vercel environment variable dashboards
-- JWT tokens expire after 60 minutes by default (configurable)
+- Never commit `.env` — use Railway/Vercel dashboards for secrets
+- JWT tokens expire after 60 minutes (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`)
 - Passwords are hashed with bcrypt
 
 ---
 
-## Tech Stack Details
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Frontend | React 18, Vite 5, Recharts |
-| Styling | CSS-in-JS (injected via `injectStyles`) |
+| Styling | CSS-in-JS via `injectStyles()` |
 | Backend | Python 3.11, FastAPI 0.111, Uvicorn |
 | ORM | SQLAlchemy 2.0 |
 | Database | Supabase (PostgreSQL) |
 | Auth | JWT (python-jose) + bcrypt (passlib) |
-| Email | Python smtplib + Gmail SMTP SSL |
-| AI | Groq API (llama3-8b-8192) |
+| Email | Resend API (HTTPS — Railway SMTP-safe) |
+| AI | Groq API (llama-3.1-8b-instant) |
 | ML | scikit-learn LinearRegression |
 | Hosting | Vercel (frontend) + Railway (backend) |
-
----
-
-*SmartStock Pro — Built for production inventory management.*
