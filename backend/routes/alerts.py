@@ -1,10 +1,17 @@
 import smtplib
 import logging
+import socket
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+# --- FORCE IPV4 DNS PATCH ---
+old_getaddrinfo = socket.getaddrinfo
+def new_getaddrinfo(*args, **kwargs):
+    responses = old_getaddrinfo(*args, **kwargs)
+    return [response for response in responses if response[0] == socket.AF_INET]
+socket.getaddrinfo = new_getaddrinfo
+# ----------------------------
 from database import get_db
 from models import Product, AlertLog
 from routes.auth import get_current_user, User
@@ -133,7 +140,7 @@ def send_alert_email_internal(product_id: int, db: Session) -> bool:
         msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, source_address=('0.0.0.0', 0)) as smtp:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
@@ -177,7 +184,7 @@ def send_email_alert(
         msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, source_address=('0.0.0.0', 0)) as smtp:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
