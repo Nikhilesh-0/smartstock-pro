@@ -128,12 +128,12 @@ def send_alert_email_internal(product_id: int, db: Session) -> bool:
         html_content = build_email_html(product)
 
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[SmartStock Pro] {status.upper()} Stock Alert: {product.name}"
+        msg["Subject"] = f"[SmartStock Pro] {status.upper()} Stock Alert: {product.name}"       
         msg["From"] = settings.GMAIL_USER
-        msg["To"] = settings.GMAIL_USER
+        msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, source_address=('0.0.0.0', 0)) as smtp:
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
@@ -174,10 +174,10 @@ def send_email_alert(
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"[SmartStock Pro] {status.upper()} Stock Alert: {product.name}"
         msg["From"] = settings.GMAIL_USER
-        msg["To"] = settings.GMAIL_USER
+        msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, source_address=('0.0.0.0', 0)) as smtp:
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
