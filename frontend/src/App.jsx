@@ -283,9 +283,10 @@ const api = async (path, options = {}) => {
   const token = localStorage.getItem("ss_token");
   const isFormData = options.body instanceof URLSearchParams;
 
+  const isDemoToken = !token || token === "demo-token" || token === "demo-token-offline";
   const headers = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
-    ...(token && token !== "demo-token" ? { Authorization: `Bearer ${token}` } : {}),
+    ...(!isDemoToken ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 
@@ -949,15 +950,17 @@ function LoginPage({ onLogin, switchToSignup, t }) {
       onLogin(data.user);
       toast("Welcome back, " + data.user.name + "!", "success");
     } catch (err) {
-      // Demo mode fallback
+      // Demo mode — works offline without backend
+      // Uses a clearly fake token that won't trigger Chrome's password breach warning
+      // because it never gets submitted to any real auth endpoint
       if (email === "demo@smartstock.pro" && password === "demo1234") {
-        const demoUser = { id: 1, name: "Demo Admin", email, role, company: "Demo Corp" };
-        localStorage.setItem("ss_token", "demo-token");
+        const demoUser = { id: 0, name: "Demo Admin", email, role, company: "Demo Corp" };
+        localStorage.setItem("ss_token", "demo-token-offline");
         localStorage.setItem("ss_user", JSON.stringify(demoUser));
         onLogin(demoUser);
         toast("Welcome to SmartStock Pro (Demo Mode)", "success");
       } else {
-        toast(err.message || "Login failed", "error");
+        toast(err.message || "Login failed — check credentials or use demo account", "error");
       }
     }
     setLoading(false);
@@ -1645,12 +1648,20 @@ function Sidebar({ collapsed, setCollapsed, page, setPage, t }) {
 function App() {
   const [isDark, setIsDark] = useState(() => localStorage.getItem("ss_theme") !== "light");
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("ss_user")); } catch { return null; }
+    try {
+      const u = JSON.parse(localStorage.getItem("ss_user"));
+      const t = localStorage.getItem("ss_token");
+      // Only restore session if both user and token exist
+      return (u && t) ? u : null;
+    } catch { return null; }
   });
   const [page, setPage] = useState("dashboard");
   const [authPage, setAuthPage] = useState("login");
   const [collapsed, setCollapsed] = useState(false);
   const [topSearch, setTopSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchDrop, setShowSearchDrop] = useState(false);
+  const searchRef = useRef(null);
 
   const t = isDark ? DARK_THEME : LIGHT_THEME;
 
@@ -1673,6 +1684,49 @@ function App() {
 
   const PAGE_TITLES = { dashboard: "Dashboard", products: "Products", sales: "Sales", analytics: "Analytics", alerts: "Alerts", export: "Export", settings: "Settings" };
 
+  // Global search — searches products by name/SKU and nav items
+  const handleGlobalSearch = useCallback(async (query) => {
+    setTopSearch(query);
+    if (!query.trim()) { setSearchResults([]); setShowSearchDrop(false); return; }
+
+    const q = query.toLowerCase();
+
+    // Nav matches
+    const navMatches = NAV_ITEMS
+      .filter(n => n.label.toLowerCase().includes(q))
+      .map(n => ({ type: "page", icon: n.icon, label: n.label, id: n.id }));
+
+    // Product matches — try API first, fall back to mock
+    let productMatches = [];
+    try {
+      const products = await api(`/inventory/products?search=${encodeURIComponent(query)}`);
+      productMatches = products.slice(0, 5).map(p => ({
+        type: "product", icon: "📦",
+        label: p.name, sub: `${p.sku} · ${p.status} · Stock: ${p.stock}`,
+        status: p.status, id: p.id,
+      }));
+    } catch {
+      productMatches = MOCK_PRODUCTS
+        .filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
+        .slice(0, 5)
+        .map(p => ({
+          type: "product", icon: "📦",
+          label: p.name, sub: `${p.sku} · ${p.status} · Stock: ${p.stock}`,
+          status: p.status, id: p.id,
+        }));
+    }
+
+    const results = [...navMatches, ...productMatches];
+    setSearchResults(results);
+    setShowSearchDrop(results.length > 0);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => { if (searchRef.current && !searchRef.current.contains(e.target)) setShowSearchDrop(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const renderPage = () => {
     const props = { t };
     switch (page) {
@@ -1694,9 +1748,54 @@ function App() {
         <div className="main-content">
           <header className="topbar">
             <span className="topbar-title">{PAGE_TITLES[page]}</span>
-            <div className="topbar-search">
-              <span style={{ color: t.muted }}>🔍</span>
-              <input placeholder="Search anything..." value={topSearch} onChange={e => setTopSearch(e.target.value)} />
+
+            {/* GLOBAL SEARCH */}
+            <div ref={searchRef} style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+              <div className="topbar-search">
+                <span style={{ color: t.muted }}>🔍</span>
+                <input
+                  placeholder="Search products, pages..."
+                  value={topSearch}
+                  onChange={e => handleGlobalSearch(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setShowSearchDrop(true)}
+                />
+                {topSearch && (
+                  <span style={{ cursor: "pointer", color: t.muted, fontSize: 12 }}
+                    onClick={() => { setTopSearch(""); setSearchResults([]); setShowSearchDrop(false); }}>✕</span>
+                )}
+              </div>
+              {showSearchDrop && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+                  background: t.card, border: `1px solid ${t.border}`, borderRadius: 10,
+                  zIndex: 500, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                }}>
+                  {searchResults.map((r, i) => (
+                    <div key={i}
+                      onClick={() => {
+                        if (r.type === "page") setPage(r.id);
+                        else setPage("products");
+                        setTopSearch(""); setSearchResults([]); setShowSearchDrop(false);
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                        cursor: "pointer", borderBottom: i < searchResults.length - 1 ? `1px solid ${t.border}` : "none",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = t.primaryDim}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <span style={{ fontSize: 16, width: 22, textAlign: "center" }}>{r.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: t.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</div>
+                        {r.sub && <div style={{ fontSize: 11, color: t.muted, marginTop: 1 }}>{r.sub}</div>}
+                      </div>
+                      {r.type === "page" && <span style={{ fontSize: 11, color: t.primary, background: t.primaryDim, padding: "2px 6px", borderRadius: 4 }}>Page</span>}
+                      {r.type === "product" && r.status && <StatusBadge status={r.status} />}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="topbar-actions">
               <div className="icon-btn" onClick={() => setIsDark(d => !d)} title="Toggle theme">
