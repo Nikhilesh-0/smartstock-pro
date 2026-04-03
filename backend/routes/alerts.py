@@ -1,19 +1,7 @@
-import smtplib
 import logging
-import socket
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
-# ── IPv4 FORCE PATCH ──────────────────────────────────────────────────────────
-_orig_getaddrinfo = socket.getaddrinfo
-def _ipv4_only_getaddrinfo(*args, **kwargs):
-    results = _orig_getaddrinfo(*args, **kwargs)
-    ipv4 = [r for r in results if r[0] == socket.AF_INET]
-    return ipv4 if ipv4 else results
-socket.getaddrinfo = _ipv4_only_getaddrinfo
-# ─────────────────────────────────────────────────────────────────────────────
+import httpx
 
 from database import get_db
 from models import Product, AlertLog
@@ -23,8 +11,6 @@ from config import settings
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 logger = logging.getLogger(__name__)
 
-
-# ── HELPERS ───────────────────────────────────────────────────────────────────
 
 def compute_suggested_order(product: Product) -> int:
     if product.eoq and product.eoq > 0:
@@ -60,10 +46,8 @@ def alert_item(product: Product) -> dict:
 
 
 def _get_alert_recipient() -> str:
-    return getattr(settings, "ALERT_EMAIL", None) or settings.GMAIL_USER
+    return getattr(settings, "ALERT_EMAIL", None) or getattr(settings, "GMAIL_USER", None) or "alerts@example.com"
 
-
-# ── GET ALERTS ────────────────────────────────────────────────────────────────
 
 @router.get("/")
 def get_alerts(
@@ -92,15 +76,11 @@ def get_alerts(
     }
 
 
-# ── EMAIL BUILDER ─────────────────────────────────────────────────────────────
-
 def build_email_html(product: Product) -> str:
     suggested = compute_suggested_order(product)
     status = product_alert_status(product)
     color = "#ef4444" if status == "critical" else "#f59e0b"
-    return f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; background: #1a1208; color: #f5e6c8; padding: 32px;">
+    return f"""<html><body style="font-family: Arial, sans-serif; background: #1a1208; color: #f5e6c8; padding: 32px;">
         <div style="max-width: 560px; margin: 0 auto; background: #2a1f10; border-radius: 12px; padding: 32px; border: 1px solid #3d2e1a;">
             <h1 style="margin: 0 0 4px 0; color: #f59e0b; font-size: 22px;">📦 SmartStock Pro</h1>
             <p style="margin: 0 0 20px 0; color: #9a8060; font-size: 14px;">Stock Alert Notification</p>
@@ -119,127 +99,67 @@ def build_email_html(product: Product) -> str:
             <p style="margin: 0; color: #9a8060; font-size: 13px; border-top: 1px solid #3d2e1a; padding-top: 16px;">
                 Automated alert from SmartStock Pro.
             </p>
-        </div>
-    </body>
-    </html>
-    """
+        </div></body></html>"""
 
 
-# ── CORE SMTP SEND ────────────────────────────────────────────────────────────
+async def _send_resend(subject: str, html_body: str) -> None:
+    api_key = getattr(settings, "RESEND_API_KEY", None)
+    if not api_key:
+        raise ValueError("RESEND_API_KEY is not set in Railway environment variables")
 
-def _build_message(subject: str, html_body: str) -> MIMEMultipart:
     recipient = _get_alert_recipient()
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = settings.GMAIL_USER
-    msg["To"] = recipient
-    msg.attach(MIMEText(html_body, "html"))
-    return msg
+    sender = getattr(settings, "RESEND_FROM", None) or "SmartStock Pro <onboarding@resend.dev>"
 
+    logger.info(f"Resend: sending to={recipient} subject={subject!r}")
 
-def _try_port_587(msg: MIMEMultipart) -> None:
-    """STARTTLS on port 587."""
-    logger.info("SMTP attempt: smtp.gmail.com:587 STARTTLS")
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
-        smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": sender, "to": [recipient], "subject": subject, "html": html_body},
+        )
 
+    if response.status_code == 401:
+        raise ValueError("Resend API key is invalid or expired — check RESEND_API_KEY in Railway")
+    if response.status_code == 422:
+        raise ValueError(f"Resend rejected the request: {response.json()}")
+    if not response.is_success:
+        raise ValueError(f"Resend API error {response.status_code}: {response.text}")
 
-def _try_port_465(msg: MIMEMultipart) -> None:
-    """SSL on port 465."""
-    logger.info("SMTP attempt: smtp.gmail.com:465 SSL")
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
-        smtp.ehlo()
-        smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
+    logger.info(f"Resend: sent successfully | id={response.json().get('id')}")
 
-
-def _try_port_2525(msg: MIMEMultipart) -> None:
-    """STARTTLS on port 2525 (some hosts block 587, not 2525)."""
-    logger.info("SMTP attempt: smtp.gmail.com:2525 STARTTLS")
-    with smtplib.SMTP("smtp.gmail.com", 2525, timeout=15) as smtp:
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
-        smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
-
-
-def _send_smtp(subject: str, html_body: str) -> str:
-    """
-    Tries ports 587 → 465 → 2525 in order.
-    Returns the port string that succeeded.
-    Raises the last exception if all three fail.
-    """
-    msg = _build_message(subject, html_body)
-    recipient = _get_alert_recipient()
-    logger.info(f"Sending alert | from={settings.GMAIL_USER} to={recipient}")
-
-    attempts = [
-        ("587 (STARTTLS)", _try_port_587),
-        ("465 (SSL)",      _try_port_465),
-        ("2525 (STARTTLS)",_try_port_2525),
-    ]
-
-    last_error = None
-    for label, fn in attempts:
-        try:
-            # Rebuild message each attempt — MIME objects can only be sent once
-            msg = _build_message(subject, html_body)
-            fn(msg)
-            logger.info(f"Email sent successfully via port {label}")
-            return label
-        except smtplib.SMTPAuthenticationError:
-            # Auth failure is definitive — no point trying other ports
-            raise
-        except Exception as e:
-            logger.warning(f"Port {label} failed: {type(e).__name__}: {e}")
-            last_error = e
-
-    raise last_error
-
-
-# ── INTERNAL AUTO-ALERT ───────────────────────────────────────────────────────
 
 def send_alert_email_internal(product_id: int, db: Session) -> bool:
-    """Called from sales.py after stock deduction. Never raises — sale must not fail."""
+    """Sync wrapper for use from sync sales routes. Never raises."""
+    import asyncio
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return False
-        if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
-            logger.warning("Email credentials not set — skipping auto alert")
+        if not getattr(settings, "RESEND_API_KEY", None):
+            logger.warning("RESEND_API_KEY not set — skipping auto alert")
             return False
 
         status = product_alert_status(product)
         subject = f"[SmartStock Pro] {status.upper()} Stock Alert: {product.name}"
-        port_used = _send_smtp(subject, build_email_html(product))
+        asyncio.run(_send_resend(subject, build_email_html(product)))
 
         log = AlertLog(
             product_id=product_id,
             alert_type=status,
-            message=f"Auto alert via {port_used}: {product.name} stock={product.stock}",
+            message=f"Auto alert (Resend): {product.name} stock={product.stock}",
             email_sent=True,
         )
         db.add(log)
         db.commit()
         return True
-
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Auto alert: Gmail auth failed — regenerate App Password in Railway vars")
-        return False
     except Exception as e:
-        logger.error(f"Auto alert failed (all ports): {type(e).__name__}: {e}")
+        logger.error(f"Auto alert failed: {type(e).__name__}: {e}")
         return False
 
-
-# ── MANUAL ALERT ENDPOINT ─────────────────────────────────────────────────────
 
 @router.post("/send-email/{product_id}")
-def send_email_alert(
+async def send_email_alert(
     product_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -248,49 +168,34 @@ def send_email_alert(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+    if not getattr(settings, "RESEND_API_KEY", None):
         raise HTTPException(
             status_code=503,
-            detail="Email not configured. Add GMAIL_USER and GMAIL_APP_PASSWORD in Railway environment variables.",
+            detail="Email not configured. Add RESEND_API_KEY to Railway environment variables.",
         )
 
     try:
         status = product_alert_status(product)
         subject = f"[SmartStock Pro] {status.upper()} Stock Alert: {product.name}"
-        port_used = _send_smtp(subject, build_email_html(product))
+        await _send_resend(subject, build_email_html(product))
 
         log = AlertLog(
             product_id=product_id,
             alert_type=status,
-            message=f"Manual alert by {current_user.email} via {port_used}: {product.name} stock={product.stock}",
+            message=f"Manual alert by {current_user.email}: {product.name} stock={product.stock}",
             email_sent=True,
         )
         db.add(log)
         db.commit()
 
-        recipient = _get_alert_recipient()
         return {
             "message": f"Alert email sent for {product.name}",
-            "sent_to": recipient,
-            "port_used": port_used,
+            "sent_to": _get_alert_recipient(),
+            "provider": "Resend",
         }
 
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(
-            status_code=401,
-            detail=(
-                "Gmail authentication failed. Your App Password is wrong or expired. "
-                "Go to myaccount.google.com → Security → App Passwords, delete the old one, "
-                "generate a new 16-char password, and update GMAIL_APP_PASSWORD in Railway."
-            ),
-        )
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        logger.error(f"Manual alert: all ports failed: {type(e).__name__}: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"All SMTP ports (587, 465, 2525) timed out: {e}. "
-                "Railway may be blocking outbound SMTP. Consider switching to SendGrid or Resend "
-                "(see README for instructions)."
-            ),
-        )
+        logger.error(f"Manual alert failed: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Email failed: {str(e)}")
