@@ -140,7 +140,8 @@ def send_alert_email_internal(product_id: int, db: Session) -> bool:
         msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.starttls()  # This upgrades the connection to secure SSL/TLS
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
@@ -184,7 +185,8 @@ def send_email_alert(
         msg["To"] = "forai3101@gmail.com"
         msg.attach(MIMEText(html_content, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.starttls()  # This upgrades the connection to secure SSL/TLS
             smtp.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
             smtp.send_message(msg)
 
