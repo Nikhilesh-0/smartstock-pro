@@ -38,8 +38,6 @@ smartstock-pro/
 └── README.md          # ← you are here (safe to have at repo root)
 ```
 
-> **GitHub note:** Having `README.md` at the repo root alongside `frontend/` and `backend/` is completely safe. Railway only reads `backend/Dockerfile`. Vercel only reads `frontend/package.json`. Neither touches the README.
-
 ---
 
 ## Local Development
